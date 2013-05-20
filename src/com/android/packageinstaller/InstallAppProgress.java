@@ -293,4 +293,29 @@ public class InstallAppProgress extends Activity implements View.OnClickListener
     public void onCancel(DialogInterface dialog) {
         finish();
     }
+
+    // Enable or disable launch button
+    private void setLauncherButtonStatus(){
+        mLaunchIntent = getPackageManager().getLaunchIntentForPackage(
+                mAppInfo.packageName);
+        boolean enabled = false;
+        if(mLaunchIntent != null) {
+            List<ResolveInfo> list = getPackageManager().
+                    queryIntentActivities(mLaunchIntent, 0);
+            if (list != null && list.size() > 0) {
+                enabled = true;
+            }
+        }
+        if (enabled) {
+            mLaunchButton.setOnClickListener(InstallAppProgress.this);
+        }
+        mLaunchButton.setEnabled(enabled);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        setLauncherButtonStatus();
+    }
+
 }
