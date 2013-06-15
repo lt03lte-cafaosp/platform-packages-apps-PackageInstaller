@@ -28,16 +28,22 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.ResolveInfo;
+import android.content.res.Configuration;
+import android.content.res.Resources;
+import android.content.res.Resources.NotFoundException;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.UserManager;
 import android.util.Log;
+import android.view.Display;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.TextView;
 
@@ -192,6 +198,7 @@ public class UninstallerActivity extends Activity implements OnClickListener,
             mOk.setOnClickListener(this);
             mCancel.setOnClickListener(this);
         }
+        adjustWindow();
     }
     
     public void onClick(View v) {
@@ -205,5 +212,33 @@ public class UninstallerActivity extends Activity implements OnClickListener,
 
     public void onCancel(DialogInterface dialog) {
         finish();
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        adjustWindow();
+    }
+    /**
+     * Adjust the width of the display window.
+     */
+    private void adjustWindow(){
+        Window window = getWindow();
+        WindowManager windowManager = getWindowManager();
+        Display d = windowManager.getDefaultDisplay();
+        WindowManager.LayoutParams layoutParam = window.getAttributes();
+        if (null == window || null == windowManager || null == d || null == layoutParam) {
+            return ;
+        }
+
+        float minWidthMinor = d.getWidth();
+        try {
+            // Get the predefined value in the frameworks, this value is the 95% of screen width.
+            minWidthMinor = getResources().getFraction(android.R.dimen.dialog_min_width_minor, d.getWidth(), d.getWidth());
+        } catch (NotFoundException e){
+        }
+        // Modify the width of window.
+        layoutParam.width = Math.round(minWidthMinor);
+        window.setAttributes(layoutParam);
     }
 }
