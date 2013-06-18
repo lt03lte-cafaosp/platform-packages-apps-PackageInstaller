@@ -103,6 +103,7 @@ public class InstallAppProgress extends Activity implements View.OnClickListener
                             }
                         }
                         if (enabled) {
+                            mLaunchButton.setEnabled(true);
                             mLaunchButton.setOnClickListener(InstallAppProgress.this);
                         } else {
                             mLaunchButton.setEnabled(false);
