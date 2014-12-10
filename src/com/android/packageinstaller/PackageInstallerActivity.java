@@ -427,7 +427,13 @@ public class PackageInstallerActivity extends Activity implements OnCancelListen
         mInstallFlowAnalytics.setInstallRequestFromUnknownSource(requestFromUnknownSource);
         mInstallFlowAnalytics.setVerifyAppsEnabled(isVerifyAppsEnabled());
         mInstallFlowAnalytics.setAppVerifierInstalled(isAppVerifierInstalled());
-        mInstallFlowAnalytics.setPackageUri(mPackageURI.toString());
+
+        if(mPackageURI != null){
+            mInstallFlowAnalytics.setPackageUri(mPackageURI.toString());
+        }else{
+            finish();
+            return;
+        }
 
         final String scheme = mPackageURI.getScheme();
         if (scheme != null && !"file".equals(scheme) && !"package".equals(scheme)) {
