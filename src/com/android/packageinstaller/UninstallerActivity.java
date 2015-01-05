@@ -109,8 +109,9 @@ public class UninstallerActivity extends Activity {
         @Override
         public void onDismiss(DialogInterface dialog) {
             super.onDismiss(dialog);
-            if((getActivity() != null) && (!(getActivity().isDestroyed()))){
-                getActivity().finish();
+            final Activity activity = getActivity();
+            if ((activity != null) && (!(activity.isDestroyed()))) {
+                activity.finish();
             }
         }
     }
