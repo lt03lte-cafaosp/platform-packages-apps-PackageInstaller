@@ -58,6 +58,7 @@ public class GrantPermissionsActivity extends OverlayTouchActivity
     private int[] mGrantResults;
 
     private LinkedHashMap<String, GroupState> mRequestGrantPermissionGroups = new LinkedHashMap<>();
+    private LinkedHashMap<String, ItemState> mRequestGrantPermissionItems = new LinkedHashMap<>();
 
     private GrantPermissionsViewHandler mViewHandler;
     private AppPermissions mAppPermissions;
@@ -157,15 +158,32 @@ public class GrantPermissionsActivity extends OverlayTouchActivity
             }
         }
 
+        for (String permName : mRequestedPermissions) {
+            PermissionInfo permissionInfo;
+            AppPermissionGroup permAppGroup;
+            try {
+                permissionInfo = this.getPackageManager().getPermissionInfo(permName, 0);
+                permAppGroup = mAppPermissions.getPermissionGroup(permissionInfo.group);
+            } catch (PackageManager.NameNotFoundException e) {
+                continue;
+            }
+            mRequestGrantPermissionItems.put(
+                    permName, new ItemState(permAppGroup, permissionInfo, permName));
+        }
         setContentView(mViewHandler.createView());
 
         Window window = getWindow();
         WindowManager.LayoutParams layoutParams = window.getAttributes();
         mViewHandler.updateWindowAttributes(layoutParams);
         window.setAttributes(layoutParams);
-
-        if (!showNextPermissionGroupGrantRequest()) {
-            setResultAndFinish();
+        if (AppPermissionGroup.isStrictOpEnable()) {
+            if (!showNextPermissionItemGrantRequest()) {
+                setResultAndFinish();
+            }
+        } else {
+            if (!showNextPermissionGroupGrantRequest()) {
+                setResultAndFinish();
+            }
         }
     }
 
@@ -193,7 +211,6 @@ public class GrantPermissionsActivity extends OverlayTouchActivity
 
     private boolean showNextPermissionGroupGrantRequest() {
         final int groupCount = mRequestGrantPermissionGroups.size();
-
         int currentIndex = 0;
         for (GroupState groupState : mRequestGrantPermissionGroups.values()) {
             if (groupState.mState == GroupState.STATE_UNKNOWN) {
@@ -230,7 +247,49 @@ public class GrantPermissionsActivity extends OverlayTouchActivity
 
             currentIndex++;
         }
+        return false;
+    }
 
+    private boolean showNextPermissionItemGrantRequest() {
+        final int itemCount = mRequestGrantPermissionItems.size();
+        int currentIndex = 0;
+        for (ItemState permState : mRequestGrantPermissionItems.values()) {
+            if (permState.mState == GroupState.STATE_UNKNOWN) {
+                CharSequence appLabel = mAppPermissions.getAppLabel();
+                SpannableString message = new SpannableString(getString(
+                        R.string.permission_warning_template, appLabel,
+                        permState.mItem.loadLabel(this.getPackageManager())));
+                // Set the permission message as the title so it can be announced.
+                setTitle(message);
+                // Color the app name.
+                int appLabelStart = message.toString().indexOf(appLabel.toString(), 0);
+                int appLabelLength = appLabel.length();
+                int color = getColor(R.color.grant_permissions_app_color);
+                message.setSpan(new ForegroundColorSpan(color), appLabelStart,
+                        appLabelStart + appLabelLength, 0);
+                // Set the new grant view
+                // TODO: Use a real message for the action. We need group action APIs
+                AppPermissionGroup permGroup = mAppPermissions.getPermissionGroup(
+                        permState.mItem.group);
+                Resources resources;
+                try {
+                    resources = getPackageManager().getResourcesForApplication(
+                            permGroup.getIconPkg());
+                } catch (NameNotFoundException e) {
+                    // Fallback to system.
+                    Log.w(LOG_TAG, "Can't get resources", e);
+                    resources = Resources.getSystem();
+                }
+                int icon = permGroup.getIconResId();
+
+                mViewHandler.updateUi(permState.mPermName, itemCount, currentIndex, ///updateUi
+                        Icon.createWithResource(resources, icon), message,
+                        permGroup.isUserSet()); ///isUserSet
+                return true;
+            }
+
+            currentIndex++;
+        }
         return false;
     }
 
@@ -241,19 +300,38 @@ public class GrantPermissionsActivity extends OverlayTouchActivity
             finish();
             return;
         }
-        GroupState groupState = mRequestGrantPermissionGroups.get(name);
-        if (groupState.mGroup != null) {
-            if (granted) {
-                groupState.mGroup.grantRuntimePermissions(doNotAskAgain);
-                groupState.mState = GroupState.STATE_ALLOWED;
-            } else {
-                groupState.mGroup.revokeRuntimePermissions(doNotAskAgain);
-                groupState.mState = GroupState.STATE_DENIED;
+        if (AppPermissionGroup.isStrictOpEnable()) {
+            ItemState permItemState = mRequestGrantPermissionItems.get(name);
+            if (permItemState.mGroup != null) {
+                Log.i(LOG_TAG, "onPermissionGrantResult permItemState.mGroup != null ");
+                if (granted) {
+                    permItemState.mGroup.grantPermissions(name, doNotAskAgain);
+                    permItemState.mState = GroupState.STATE_ALLOWED;
+                } else {
+                    permItemState.mGroup.revokePermissions(name, doNotAskAgain);
+                    permItemState.mState = GroupState.STATE_DENIED;
+                }
+                updateGrantResults(permItemState.mGroup);
             }
-            updateGrantResults(groupState.mGroup);
-        }
-        if (!showNextPermissionGroupGrantRequest()) {
-            setResultAndFinish();
+
+            if (!showNextPermissionItemGrantRequest()) {
+                setResultAndFinish();
+            }
+        } else {
+            GroupState groupState = mRequestGrantPermissionGroups.get(name);
+            if (groupState.mGroup != null) {
+                if (granted) {
+                    groupState.mGroup.grantRuntimePermissions(doNotAskAgain);
+                    groupState.mState = GroupState.STATE_ALLOWED;
+                } else {
+                    groupState.mGroup.revokeRuntimePermissions(doNotAskAgain);
+                    groupState.mState = GroupState.STATE_DENIED;
+                }
+                updateGrantResults(groupState.mGroup);
+            }
+            if (!showNextPermissionGroupGrantRequest()) {
+                setResultAndFinish();
+            }
         }
     }
 
@@ -269,13 +347,13 @@ public class GrantPermissionsActivity extends OverlayTouchActivity
     }
 
     @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event)  {
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
         // We do not allow backing out.
         return keyCode == KeyEvent.KEYCODE_BACK;
     }
 
     @Override
-    public boolean onKeyUp(int keyCode, KeyEvent event)  {
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
         // We do not allow backing out.
         return keyCode == KeyEvent.KEYCODE_BACK;
     }
@@ -287,7 +365,7 @@ public class GrantPermissionsActivity extends OverlayTouchActivity
     }
 
     private int computePermissionGrantState(PackageInfo callingPackageInfo,
-            String permission, int permissionPolicy) {
+                                            String permission, int permissionPolicy) {
         boolean permissionRequested = false;
 
         for (int i = 0; i < callingPackageInfo.requestedPermissions.length; i++) {
@@ -384,6 +462,22 @@ public class GrantPermissionsActivity extends OverlayTouchActivity
         int mState = STATE_UNKNOWN;
 
         GroupState(AppPermissionGroup group) {
+            mGroup = group;
+        }
+    }
+
+    private static final class ItemState {
+        static final int STATE_UNKNOWN = 0;
+        static final int STATE_ALLOWED = 1;
+        static final int STATE_DENIED = 2;
+
+        final PermissionInfo mItem;
+        int mState = STATE_UNKNOWN;
+        String mPermName;
+        final AppPermissionGroup mGroup;
+        ItemState(AppPermissionGroup group, PermissionInfo item, String itemId) {
+            mItem = item;
+            mPermName = itemId;
             mGroup = group;
         }
     }
