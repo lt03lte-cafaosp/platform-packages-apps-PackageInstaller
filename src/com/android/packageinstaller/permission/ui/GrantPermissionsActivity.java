@@ -224,7 +224,7 @@ public class GrantPermissionsActivity extends OverlayTouchActivity
 
                 mViewHandler.updateUi(groupState.mGroup.getName(), groupCount, currentIndex,
                         Icon.createWithResource(resources, icon), message,
-                        groupState.mGroup.isUserSet());
+                        groupState.mGroup.isUserFixed());
                 return true;
             }
 
