@@ -28,6 +28,7 @@ import android.os.Build;
 import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.util.ArrayMap;
+import android.util.Log;
 
 import com.android.packageinstaller.R;
 import com.android.packageinstaller.permission.utils.LocationUtils;
@@ -285,6 +286,27 @@ public final class AppPermissionGroup implements Comparable<AppPermissionGroup> 
         return false;
     }
 
+    public boolean isRuntimePermissionGranted(String perm) {
+        if (LocationUtils.isLocationGroupAndProvider(mName, mPackageInfo.packageName)) {
+            return LocationUtils.isLocationEnabled(mContext);
+        }
+        final int permissionCount = mPermissions.size();
+        for (int i = 0; i < permissionCount; i++) {
+            Permission permission = mPermissions.valueAt(i);
+            if(perm.equals(permission.getName())){
+                if (mAppSupportsRuntimePermissions) {
+                    if (permission.isGranted()) {
+                        return true;
+                    }
+                } else if (permission.isGranted() && ((permission.getAppOp()
+                        != AppOpsManager.OP_NONE && permission.isAppOpAllowed())
+                        || permission.getAppOp() == AppOpsManager.OP_NONE)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
     public boolean grantRuntimePermissions(boolean fixedByTheUser) {
         final boolean isSharedUser = mPackageInfo.sharedUserId != null;
         final int uid = mPackageInfo.applicationInfo.uid;
@@ -316,7 +338,7 @@ public final class AppPermissionGroup implements Comparable<AppPermissionGroup> 
                 if (!fixedByTheUser) {
                     // Now the apps can ask for the permission as the user
                     // no longer has it fixed in a denied state.
-                    if (permission.isUserFixed() || permission.isUserSet()) {
+                    if (permission.isUserFixed() || !permission.isUserSet()) {
                         permission.setUserFixed(false);
                         permission.setUserSet(true);
                         mPackageManager.updatePermissionFlags(permission.getName(),
@@ -324,6 +346,17 @@ public final class AppPermissionGroup implements Comparable<AppPermissionGroup> 
                                 PackageManager.FLAG_PERMISSION_USER_FIXED
                                         | PackageManager.FLAG_PERMISSION_USER_SET,
                                 0, mUserHandle);
+                    }
+                } else {
+                    if (permission.isUserSet() || !permission.isUserFixed()) {
+                        permission.setUserSet(false);
+                        permission.setUserFixed(true);
+                        mPackageManager.updatePermissionFlags(permission.getName(),
+                                mPackageInfo.packageName,
+                                PackageManager.FLAG_PERMISSION_USER_SET
+                                        | PackageManager.FLAG_PERMISSION_USER_FIXED,
+                                PackageManager.FLAG_PERMISSION_USER_FIXED,
+                                mUserHandle);
                     }
                 }
             } else {
@@ -509,14 +542,16 @@ public final class AppPermissionGroup implements Comparable<AppPermissionGroup> 
                                 mUserHandle);
                     }
                 } else {
-                    if (!permission.isUserSet()) {
+                    if (!permission.isUserSet()|| permission.isUserFixed()) {
                         permission.setUserSet(true);
+                        permission.setUserFixed(false);
                         // Take a note that the user already chose once.
                         mPackageManager.updatePermissionFlags(permission.getName(),
                                 mPackageInfo.packageName,
-                                PackageManager.FLAG_PERMISSION_USER_SET,
-                                PackageManager.FLAG_PERMISSION_USER_SET,
-                                mUserHandle);
+                                PackageManager.FLAG_PERMISSION_USER_FIXED
+                                        | PackageManager.FLAG_PERMISSION_USER_SET,
+                                0, mUserHandle);
+
                     }
                 }
             } else {
