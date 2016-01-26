@@ -25,8 +25,10 @@ import android.content.pm.PackageManager;
 import android.content.pm.PermissionGroupInfo;
 import android.content.pm.PermissionInfo;
 import android.os.Build;
+import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.util.ArrayMap;
+import android.util.Log;
 
 import com.android.packageinstaller.R;
 import com.android.packageinstaller.permission.utils.LocationUtils;
@@ -57,7 +59,7 @@ public final class AppPermissionGroup implements Comparable<AppPermissionGroup> 
     private final boolean mAppSupportsRuntimePermissions;
 
     public static AppPermissionGroup create(Context context, PackageInfo packageInfo,
-            String permissionName) {
+                                            String permissionName) {
         PermissionInfo permissionInfo;
         try {
             permissionInfo = context.getPackageManager().getPermissionInfo(permissionName, 0);
@@ -96,8 +98,8 @@ public final class AppPermissionGroup implements Comparable<AppPermissionGroup> 
     }
 
     public static AppPermissionGroup create(Context context, PackageInfo packageInfo,
-            PackageItemInfo groupInfo, List<PermissionInfo> permissionInfos,
-            UserHandle userHandle) {
+                                            PackageItemInfo groupInfo, List<PermissionInfo> permissionInfos,
+                                            UserHandle userHandle) {
 
         AppPermissionGroup group = new AppPermissionGroup(context, packageInfo, groupInfo.name,
                 groupInfo.packageName, groupInfo.loadLabel(context.getPackageManager()),
@@ -182,8 +184,8 @@ public final class AppPermissionGroup implements Comparable<AppPermissionGroup> 
     }
 
     private AppPermissionGroup(Context context, PackageInfo packageInfo, String name,
-            String declaringPackage, CharSequence label, CharSequence description,
-            String iconPkg, int iconResId, UserHandle userHandle) {
+                               String declaringPackage, CharSequence label, CharSequence description,
+                               String iconPkg, int iconResId, UserHandle userHandle) {
         mContext = context;
         mUserHandle = userHandle;
         mPackageManager = mContext.getPackageManager();
@@ -284,6 +286,27 @@ public final class AppPermissionGroup implements Comparable<AppPermissionGroup> 
         return false;
     }
 
+    public boolean isRuntimePermissionGranted(String perm) {
+        if (LocationUtils.isLocationGroupAndProvider(mName, mPackageInfo.packageName)) {
+            return LocationUtils.isLocationEnabled(mContext);
+        }
+        final int permissionCount = mPermissions.size();
+        for (int i = 0; i < permissionCount; i++) {
+            Permission permission = mPermissions.valueAt(i);
+            if(perm.equals(permission.getName())){
+                if (mAppSupportsRuntimePermissions) {
+                    if (permission.isGranted()) {
+                        return true;
+                    }
+                } else if (permission.isGranted() && ((permission.getAppOp()
+                        != AppOpsManager.OP_NONE && permission.isAppOpAllowed())
+                        || permission.getAppOp() == AppOpsManager.OP_NONE)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
     public boolean grantRuntimePermissions(boolean fixedByTheUser) {
         final boolean isSharedUser = mPackageInfo.sharedUserId != null;
         final int uid = mPackageInfo.applicationInfo.uid;
@@ -315,7 +338,7 @@ public final class AppPermissionGroup implements Comparable<AppPermissionGroup> 
                 if (!fixedByTheUser) {
                     // Now the apps can ask for the permission as the user
                     // no longer has it fixed in a denied state.
-                    if (permission.isUserFixed() || permission.isUserSet()) {
+                    if (permission.isUserFixed() || !permission.isUserSet()) {
                         permission.setUserFixed(false);
                         permission.setUserSet(true);
                         mPackageManager.updatePermissionFlags(permission.getName(),
@@ -323,6 +346,17 @@ public final class AppPermissionGroup implements Comparable<AppPermissionGroup> 
                                 PackageManager.FLAG_PERMISSION_USER_FIXED
                                         | PackageManager.FLAG_PERMISSION_USER_SET,
                                 0, mUserHandle);
+                    }
+                } else {
+                    if (permission.isUserSet() || !permission.isUserFixed()) {
+                        permission.setUserSet(false);
+                        permission.setUserFixed(true);
+                        mPackageManager.updatePermissionFlags(permission.getName(),
+                                mPackageInfo.packageName,
+                                PackageManager.FLAG_PERMISSION_USER_SET
+                                        | PackageManager.FLAG_PERMISSION_USER_FIXED,
+                                PackageManager.FLAG_PERMISSION_USER_FIXED,
+                                mUserHandle);
                     }
                 }
             } else {
@@ -372,6 +406,107 @@ public final class AppPermissionGroup implements Comparable<AppPermissionGroup> 
         return true;
     }
 
+    public boolean grantPermissions(String permItem, boolean fixedByTheUser) {
+        final boolean isSharedUser = mPackageInfo.sharedUserId != null;
+        final int uid = mPackageInfo.applicationInfo.uid;
+
+        // We toggle permissions only to apps that support runtime
+        // permissions, otherwise we toggle the app op corresponding
+        // to the permission if the permission is granted to the app.
+        for (Permission permission : mPermissions.values()) {
+            if (permItem.equals(permission.getName())) {
+                if (mAppSupportsRuntimePermissions) {
+                    // Do not touch permissions fixed by the system.
+                    if (permission.isSystemFixed()) {
+                        return false;
+                    }
+
+                    // Ensure the permission app op enabled before the permission grant.
+                    if (permission.hasAppOp() && !permission.isAppOpAllowed()) {
+                        permission.setAppOpAllowed(true);
+                        mAppOps.setUidMode(permission.getAppOp(), uid, AppOpsManager.MODE_ALLOWED);
+                    }
+
+                    // Grant the permission if needed.
+                    if (!permission.isGranted()) {
+                        permission.setGranted(true);
+                        mPackageManager.grantRuntimePermission(mPackageInfo.packageName,
+                                permission.getName(), mUserHandle);
+                    }
+
+                    // Update the permission flags.
+                    if (!fixedByTheUser) {
+                        // Now the apps can ask for the permission as the user
+                        // no longer has it fixed in a denied state.
+                        if (permission.isUserFixed() || !permission.isUserSet()) {   ///addy.
+                            permission.setUserFixed(false);
+                            permission.setUserSet(true);
+                            mPackageManager.updatePermissionFlags(permission.getName(),
+                                    mPackageInfo.packageName,
+                                    PackageManager.FLAG_PERMISSION_USER_FIXED
+                                            | PackageManager.FLAG_PERMISSION_USER_SET,
+                                    0, mUserHandle);
+                        }
+                    } else {
+                        if (permission.isUserSet() || !permission.isUserFixed()) {
+                            permission.setUserSet(false);
+                            permission.setUserFixed(true);
+                            mPackageManager.updatePermissionFlags(permission.getName(),
+                                    mPackageInfo.packageName,
+                                    PackageManager.FLAG_PERMISSION_USER_SET
+                                            | PackageManager.FLAG_PERMISSION_USER_FIXED,
+                                    PackageManager.FLAG_PERMISSION_USER_FIXED,
+                                    mUserHandle);
+                        }
+                    }
+                } else {
+                    // Legacy apps cannot have a not granted permission but just in case.
+                    // Also if the permissions has no corresponding app op, then it is a
+                    // third-party one and we do not offer toggling of such permissions.
+                    if (!permission.isGranted() || !permission.hasAppOp()) {
+                        continue;
+                    }
+
+                    if (!permission.isAppOpAllowed()) {
+                        permission.setAppOpAllowed(true);
+                        // It this is a shared user we want to enable the app op for all
+                        // packages in the shared user to match the behavior of this
+                        // shared user having a runtime permission.
+                        if (isSharedUser) {
+                            // Enable the app op.
+                            String[] packageNames = mPackageManager.getPackagesForUid(uid);
+                            for (String packageName : packageNames) {
+                                mAppOps.setUidMode(permission.getAppOp(), uid,
+                                        AppOpsManager.MODE_ALLOWED);
+                            }
+                        } else {
+                            // Enable the app op.
+                            mAppOps.setUidMode(
+                                    permission.getAppOp(), uid, AppOpsManager.MODE_ALLOWED);
+                        }
+
+                        // Mark that the permission should not be be granted on upgrade
+                        // when the app begins supporting runtime permissions.
+                        if (permission.shouldRevokeOnUpgrade()) {
+                            permission.setRevokeOnUpgrade(false);
+                            mPackageManager.updatePermissionFlags(permission.getName(),
+                                    mPackageInfo.packageName,
+                                    PackageManager.FLAG_PERMISSION_REVOKE_ON_UPGRADE,
+                                    0, mUserHandle);
+                        }
+
+                        // Legacy apps do not know that they have to retry access to a
+                        // resource due to changes in runtime permissions (app ops in this
+                        // case). Therefore, we restart them on app op change, so they
+                        // can pick up the change.
+                        mActivityManager.killUid(uid, KILL_REASON_APP_OP_CHANGE);
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
     public boolean revokeRuntimePermissions(boolean fixedByTheUser) {
         final boolean isSharedUser = mPackageInfo.sharedUserId != null;
         final int uid = mPackageInfo.applicationInfo.uid;
@@ -407,14 +542,16 @@ public final class AppPermissionGroup implements Comparable<AppPermissionGroup> 
                                 mUserHandle);
                     }
                 } else {
-                    if (!permission.isUserSet()) {
+                    if (!permission.isUserSet()|| permission.isUserFixed()) {
                         permission.setUserSet(true);
+                        permission.setUserFixed(false);
                         // Take a note that the user already chose once.
                         mPackageManager.updatePermissionFlags(permission.getName(),
                                 mPackageInfo.packageName,
-                                PackageManager.FLAG_PERMISSION_USER_SET,
-                                PackageManager.FLAG_PERMISSION_USER_SET,
-                                mUserHandle);
+                                PackageManager.FLAG_PERMISSION_USER_FIXED
+                                        | PackageManager.FLAG_PERMISSION_USER_SET,
+                                0, mUserHandle);
+
                     }
                 }
             } else {
@@ -464,6 +601,102 @@ public final class AppPermissionGroup implements Comparable<AppPermissionGroup> 
         return true;
     }
 
+    public boolean revokePermissions(String permItem, boolean fixedByTheUser) {
+        final boolean isSharedUser = mPackageInfo.sharedUserId != null;
+        final int uid = mPackageInfo.applicationInfo.uid;
+
+        // We toggle permissions only to apps that support runtime
+        // permissions, otherwise we toggle the app op corresponding
+        // to the permission if the permission is granted to the app.
+        for (Permission permission : mPermissions.values()) {
+            if(permItem.equals(permission.getName())) {
+
+                if (mAppSupportsRuntimePermissions) {
+                    // Do not touch permissions fixed by the system.
+                    if (permission.isSystemFixed()) {
+                        return false;
+                    }
+
+                    // Revoke the permission if needed.
+                    if (permission.isGranted()) {
+                        permission.setGranted(false);
+                        mPackageManager.revokeRuntimePermission(mPackageInfo.packageName,
+                                permission.getName(), mUserHandle);
+                    }
+
+                    // Update the permission flags.
+                    if (fixedByTheUser) {
+                        // Take a note that the user fixed the permission.
+                        if (permission.isUserSet() || !permission.isUserFixed()) {
+                            permission.setUserSet(false);
+                            permission.setUserFixed(true);
+                            mPackageManager.updatePermissionFlags(permission.getName(),
+                                    mPackageInfo.packageName,
+                                    PackageManager.FLAG_PERMISSION_USER_SET
+                                            | PackageManager.FLAG_PERMISSION_USER_FIXED,
+                                    PackageManager.FLAG_PERMISSION_USER_FIXED,
+                                    mUserHandle);
+                        }
+                    } else {
+                        if (!permission.isUserSet() || permission.isUserFixed()) {
+                            permission.setUserSet(true);
+                            permission.setUserFixed(false);
+                            // Take a note that the user already chose once.
+                            mPackageManager.updatePermissionFlags(permission.getName(),
+                                    mPackageInfo.packageName,
+                                    PackageManager.FLAG_PERMISSION_USER_FIXED
+                                            | PackageManager.FLAG_PERMISSION_USER_SET,
+                                    0, mUserHandle);
+
+                        }
+                    }
+                } else {
+                    // Legacy apps cannot have a non-granted permission but just in case.
+                    // Also if the permission has no corresponding app op, then it is a
+                    // third-party one and we do not offer toggling of such permissions.
+                    if (!permission.isGranted() || !permission.hasAppOp()) {
+                        continue;
+                    }
+
+                    if (permission.isAppOpAllowed()) {
+                        permission.setAppOpAllowed(false);
+                        // It this is a shared user we want to enable the app op for all
+                        // packages the the shared user to match the behavior of this
+                        // shared user having a runtime permission.
+                        if (isSharedUser) {
+                            String[] packageNames = mPackageManager.getPackagesForUid(uid);
+                            for (String packageName : packageNames) {
+                                // Disable the app op.
+                                mAppOps.setUidMode(permission.getAppOp(), uid,
+                                        AppOpsManager.MODE_IGNORED);
+                            }
+                        } else {
+                            // Disable the app op.
+                            mAppOps.setUidMode(
+                                    permission.getAppOp(), uid, AppOpsManager.MODE_IGNORED);
+                        }
+
+                        // Mark that the permission should not be granted on upgrade
+                        // when the app begins supporting runtime permissions.
+                        if (!permission.shouldRevokeOnUpgrade()) {
+                            permission.setRevokeOnUpgrade(true);
+                            mPackageManager.updatePermissionFlags(permission.getName(),
+                                    mPackageInfo.packageName,
+                                    PackageManager.FLAG_PERMISSION_REVOKE_ON_UPGRADE,
+                                    PackageManager.FLAG_PERMISSION_REVOKE_ON_UPGRADE,
+                                    mUserHandle);
+                        }
+
+                        // Disabling an app op may put the app in a situation in which it
+                        // has a handle to state it shouldn't have, so we have to kill the
+                        // app. This matches the revoke runtime permission behavior.
+                        mActivityManager.killUid(uid, KILL_REASON_APP_OP_CHANGE);
+                    }
+                }
+            }
+        }
+        return true;
+    }
     public void setPolicyFixed() {
         final int permissionCount = mPermissions.size();
         for (int i = 0; i < permissionCount; i++) {
@@ -533,6 +766,10 @@ public final class AppPermissionGroup implements Comparable<AppPermissionGroup> 
             }
         }
         return false;
+    }
+
+    public static boolean isStrictOpEnable() {
+        return SystemProperties.getBoolean("persist.sys.strict_op_enable", false);
     }
 
     @Override

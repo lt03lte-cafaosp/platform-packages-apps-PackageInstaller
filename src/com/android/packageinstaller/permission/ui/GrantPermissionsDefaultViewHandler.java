@@ -185,8 +185,8 @@ final class GrantPermissionsDefaultViewHandler
         final int startHeight = mRootView.getLayoutHeight();
         mRootView.addOnLayoutChangeListener(new OnLayoutChangeListener() {
             @Override
-            public void onLayoutChange(View v, int left, int top, int right, int bottom, int oldLeft,
-                    int oldTop, int oldRight, int oldBottom) {
+            public void onLayoutChange(View v, int left, int top, int right, int bottom,
+                                       int oldLeft, int oldTop, int oldRight, int oldBottom) {
                 mRootView.removeOnLayoutChangeListener(this);
                 SparseArray<Float> endPositions = getViewPositions();
                 int endHeight = mRootView.getLayoutHeight();
@@ -289,7 +289,7 @@ final class GrantPermissionsDefaultViewHandler
     }
 
     private void animateYPos(SparseArray<Float> startPositions, SparseArray<Float> endPositions,
-            int heightDiff) {
+                             int heightDiff) {
         final int N = startPositions.size();
         for (int i = 0; i < N; i++) {
             int key = startPositions.keyAt(i);
@@ -362,7 +362,7 @@ final class GrantPermissionsDefaultViewHandler
     }
 
     private void updateDoNotAskCheckBox() {
-        if (mShowDonNotAsk) {
+        if (!mShowDonNotAsk) {
             mDoNotAskCheckbox.setVisibility(View.VISIBLE);
             mDoNotAskCheckbox.setOnClickListener(this);
             mDoNotAskCheckbox.setChecked(mDoNotAskChecked);
@@ -378,7 +378,8 @@ final class GrantPermissionsDefaultViewHandler
             case R.id.permission_allow_button:
                 if (mResultListener != null) {
                     view.clearAccessibilityFocus();
-                    mResultListener.onPermissionGrantResult(mGroupName, true, false);
+                    mResultListener.onPermissionGrantResult(
+                            mGroupName, true, mDoNotAskCheckbox.isChecked());
                 }
                 break;
             case R.id.permission_deny_button:
@@ -390,7 +391,7 @@ final class GrantPermissionsDefaultViewHandler
                 }
                 break;
             case R.id.do_not_ask_checkbox:
-                mAllowButton.setEnabled(!mDoNotAskCheckbox.isChecked());
+                //mAllowButton.setEnabled(!mDoNotAskCheckbox.isChecked());
                 break;
         }
     }
@@ -446,7 +447,7 @@ final class GrantPermissionsDefaultViewHandler
 
         @Override
         public void onLayoutChange(View v, int left, int top, int right, int bottom, int oldLeft,
-                int oldTop, int oldRight, int oldBottom) {
+                                   int oldTop, int oldRight, int oldBottom) {
             // Ensure that the height never changes.
             updateHeight();
         }
