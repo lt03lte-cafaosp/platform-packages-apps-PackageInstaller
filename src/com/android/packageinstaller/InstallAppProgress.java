@@ -19,6 +19,7 @@ package com.android.packageinstaller;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.content.ActivityNotFoundException;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnCancelListener;
 import android.content.Intent;
@@ -41,11 +42,13 @@ import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
+import com.android.packageinstaller.permission.model.AppPermissionGroup;
+
 import java.io.File;
 import java.util.List;
 
 /**
- * This activity corresponds to a download progress screen that is displayed 
+ * This activity corresponds to a download progress screen that is displayed
  * when the user tries
  * to install an application bundled as an apk file. The result of the application install
  * is indicated in the result code that gets set to the corresponding installation status
@@ -53,12 +56,13 @@ import java.util.List;
  * the existing package is replaced with the new one.
  */
 public class InstallAppProgress extends Activity implements View.OnClickListener, OnCancelListener {
-    private final String TAG="InstallAppProgress";
+    private final String TAG = "InstallAppProgress";
     private boolean localLOGV = false;
     static final String EXTRA_MANIFEST_DIGEST =
             "com.android.packageinstaller.extras.manifest_digest";
     static final String EXTRA_INSTALL_FLOW_ANALYTICS =
             "com.android.packageinstaller.extras.install_flow_analytics";
+    static final String EXTRA_HIDE_INFO_BUTTON = "hideInfoButton";
     private ApplicationInfo mAppInfo;
     private Uri mPackageURI;
     private InstallFlowAnalytics mInstallFlowAnalytics;
@@ -82,8 +86,8 @@ public class InstallAppProgress extends Activity implements View.OnClickListener
                         Intent result = new Intent();
                         result.putExtra(Intent.EXTRA_INSTALL_RESULT, msg.arg1);
                         setResult(msg.arg1 == PackageManager.INSTALL_SUCCEEDED
-                                ? Activity.RESULT_OK : Activity.RESULT_FIRST_USER,
-                                        result);
+                                        ? Activity.RESULT_OK : Activity.RESULT_FIRST_USER,
+                                result);
                         finish();
                         return;
                     }
@@ -102,7 +106,7 @@ public class InstallAppProgress extends Activity implements View.OnClickListener
                         mLaunchIntent = getPackageManager().getLaunchIntentForPackage(
                                 mAppInfo.packageName);
                         boolean enabled = false;
-                        if(mLaunchIntent != null) {
+                        if (mLaunchIntent != null) {
                             List<ResolveInfo> list = getPackageManager().
                                     queryIntentActivities(mLaunchIntent, 0);
                             if (list != null && list.size() > 0) {
@@ -114,7 +118,7 @@ public class InstallAppProgress extends Activity implements View.OnClickListener
                         } else {
                             mLaunchButton.setEnabled(false);
                         }
-                    } else if (msg.arg1 == PackageManager.INSTALL_FAILED_INSUFFICIENT_STORAGE){
+                    } else if (msg.arg1 == PackageManager.INSTALL_FAILED_INSUFFICIENT_STORAGE) {
                         showDialogInner(DLG_OUT_OF_SPACE);
                         return;
                     } else {
@@ -125,9 +129,9 @@ public class InstallAppProgress extends Activity implements View.OnClickListener
                         mLaunchButton.setVisibility(View.INVISIBLE);
                     }
                     if (centerTextDrawable != null) {
-                    centerTextDrawable.setBounds(0, 0,
-                            centerTextDrawable.getIntrinsicWidth(),
-                            centerTextDrawable.getIntrinsicHeight());
+                        centerTextDrawable.setBounds(0, 0,
+                                centerTextDrawable.getIntrinsicWidth(),
+                                centerTextDrawable.getIntrinsicHeight());
                         mStatusTextView.setCompoundDrawablesRelative(centerTextDrawable, null,
                                 null, null);
                     }
@@ -146,7 +150,7 @@ public class InstallAppProgress extends Activity implements View.OnClickListener
             }
         }
     };
-    
+
     private int getExplanationFromErrorCode(int errCode) {
         Log.d(TAG, "Installation error code: " + errCode);
         switch (errCode) {
@@ -185,30 +189,32 @@ public class InstallAppProgress extends Activity implements View.OnClickListener
     @Override
     public Dialog onCreateDialog(int id, Bundle bundle) {
         switch (id) {
-        case DLG_OUT_OF_SPACE:
-            String dlgText = getString(R.string.out_of_space_dlg_text, mLabel);
-            return new AlertDialog.Builder(this)
-                    .setTitle(R.string.out_of_space_dlg_title)
-                    .setMessage(dlgText)
-                    .setPositiveButton(R.string.manage_applications, new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialog, int which) {
-                            //launch manage applications
-                            Intent intent = new Intent("android.intent.action.MANAGE_PACKAGE_STORAGE");
-                            startActivity(intent);
-                            finish();
-                        }
-                    })
-                    .setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialog, int which) {
-                            Log.i(TAG, "Canceling installation");
-                            finish();
-                        }
-                    })
-                    .setOnCancelListener(this)
-                    .create();
+            case DLG_OUT_OF_SPACE:
+                String dlgText = getString(R.string.out_of_space_dlg_text, mLabel);
+                return new AlertDialog.Builder(this)
+                        .setTitle(R.string.out_of_space_dlg_title)
+                        .setMessage(dlgText)
+                        .setPositiveButton(R.string.manage_applications,
+                                new DialogInterface.OnClickListener() {
+                                    public void onClick(DialogInterface dialog, int which) {
+                                        //launch manage applications
+                                        Intent intent = new Intent(
+                                                "android.intent.action.MANAGE_PACKAGE_STORAGE");
+                                        startActivity(intent);
+                                        finish();
+                                    }
+                                })
+                        .setNegativeButton(R.string.cancel, new DialogInterface.OnClickListener() {
+                            public void onClick(DialogInterface dialog, int which) {
+                                Log.i(TAG, "Canceling installation");
+                                finish();
+                            }
+                        })
+                        .setOnCancelListener(this)
+                        .create();
         }
-       return null;
-   }
+        return null;
+    }
 
     private void showDialogInner(int id) {
         removeDialog(id);
@@ -228,14 +234,14 @@ public class InstallAppProgress extends Activity implements View.OnClickListener
         int installFlags = 0;
         PackageManager pm = getPackageManager();
         try {
-            PackageInfo pi = pm.getPackageInfo(mAppInfo.packageName, 
+            PackageInfo pi = pm.getPackageInfo(mAppInfo.packageName,
                     PackageManager.GET_UNINSTALLED_PACKAGES);
-            if(pi != null) {
+            if (pi != null) {
                 installFlags |= PackageManager.INSTALL_REPLACE_EXISTING;
             }
         } catch (NameNotFoundException e) {
         }
-        if((installFlags & PackageManager.INSTALL_REPLACE_EXISTING )!= 0) {
+        if ((installFlags & PackageManager.INSTALL_REPLACE_EXISTING) != 0) {
             Log.w(TAG, "Replacing package:" + mAppInfo.packageName);
         }
 
@@ -249,15 +255,15 @@ public class InstallAppProgress extends Activity implements View.OnClickListener
         }
         mLabel = as.label;
         PackageUtil.initSnippetForNewApp(this, as, R.id.app_snippet);
-        mStatusTextView = (TextView)findViewById(R.id.center_text);
+        mStatusTextView = (TextView) findViewById(R.id.center_text);
         mStatusTextView.setText(R.string.installing);
         mExplanationTextView = (TextView) findViewById(R.id.center_explanation);
         mProgressBar = (ProgressBar) findViewById(R.id.progress_bar);
         mProgressBar.setIndeterminate(true);
         // Hide button till progress is being displayed
-        mOkPanel = (View)findViewById(R.id.buttons_panel);
-        mDoneButton = (Button)findViewById(R.id.done_button);
-        mLaunchButton = (Button)findViewById(R.id.launch_button);
+        mOkPanel = (View) findViewById(R.id.buttons_panel);
+        mDoneButton = (Button) findViewById(R.id.done_button);
+        mLaunchButton = (Button) findViewById(R.id.launch_button);
         mOkPanel.setVisibility(View.INVISIBLE);
 
         String installerPackageName = getIntent().getStringExtra(
@@ -292,15 +298,25 @@ public class InstallAppProgress extends Activity implements View.OnClickListener
     }
 
     public void onClick(View v) {
-        if(v == mDoneButton) {
+        if (v == mDoneButton) {
             if (mAppInfo.packageName != null) {
-                Log.i(TAG, "Finished installing "+mAppInfo.packageName);
+                Log.i(TAG, "Finished installing " + mAppInfo.packageName);
             }
-            finish();
-        } else if(v == mLaunchButton) {
+        } else if (v == mLaunchButton) {
             startActivity(mLaunchIntent);
-            finish();
         }
+        if (AppPermissionGroup.isStrictOpEnable()) {
+            Intent intent = new Intent(Intent.ACTION_MANAGE_APP_PERMISSIONS);
+            intent.putExtra(Intent.EXTRA_PACKAGE_NAME, mAppInfo.packageName);
+            intent.putExtra(EXTRA_HIDE_INFO_BUTTON, true);
+            try {
+                startActivity(intent);
+            } catch (ActivityNotFoundException e) {
+                Log.w("InstallAppProgress",
+                        "No app can handle android.intent.action.MANAGE_APP_PERMISSIONS");
+            }
+        }
+        finish();
     }
 
     public void onCancel(DialogInterface dialog) {
