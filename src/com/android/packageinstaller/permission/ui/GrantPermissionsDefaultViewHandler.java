@@ -44,6 +44,7 @@ import com.android.internal.widget.ButtonBarLayout;
 import com.android.packageinstaller.R;
 
 import java.util.ArrayList;
+import com.android.packageinstaller.permission.model.AppPermissionGroup;
 
 final class GrantPermissionsDefaultViewHandler
         implements GrantPermissionsViewHandler, OnClickListener {
@@ -379,7 +380,7 @@ final class GrantPermissionsDefaultViewHandler
                 if (mResultListener != null) {
                     view.clearAccessibilityFocus();
                     mResultListener.onPermissionGrantResult(
-                            mGroupName, true, mDoNotAskCheckbox.isChecked());
+                            mGroupName, true, AppPermissionGroup.isStrictOpEnable()? false: mDoNotAskCheckbox.isChecked());
                 }
                 break;
             case R.id.permission_deny_button:
@@ -387,7 +388,7 @@ final class GrantPermissionsDefaultViewHandler
                 if (mResultListener != null) {
                     view.clearAccessibilityFocus();
                     mResultListener.onPermissionGrantResult(mGroupName, false,
-                            mDoNotAskCheckbox.isChecked());
+                            AppPermissionGroup.isStrictOpEnable()? false: mDoNotAskCheckbox.isChecked());
                 }
                 break;
             case R.id.do_not_ask_checkbox:
