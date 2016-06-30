@@ -250,9 +250,11 @@ public final class AppPermissionsFragment extends SettingsWithHeader
                         preference_permission.setPersistent(false);
                         preference_permission.setEnabled(true);
                         AppPermissionGroup permissionGroup = getPermisssionGroup(perm.group);
-                        preference_permission.setChecked(
-                                permissionGroup.isRuntimePermissionGranted(permission.getName()));
-                        screen.addPreference(preference_permission);
+                        if (permissionGroup != null) {
+                            preference_permission.setChecked(permissionGroup
+                                    .isRuntimePermissionGranted(permission.getName()));
+                            screen.addPreference(preference_permission);
+                        }
                     } else if (perm.protectionLevel == PermissionInfo.PROTECTION_NORMAL) {
                         continue;
                     }
